@@ -76,13 +76,13 @@ def upgrade() -> None:
             "known_ibans",
             postgresql.ARRAY(sa.Text),
             nullable=False,
-            server_default="'{}'",
+            server_default=sa.text("ARRAY[]::text[]"),
         ),
         sa.Column(
             "keyword_patterns",
             postgresql.ARRAY(sa.Text),
             nullable=False,
-            server_default="'{}'",
+            server_default=sa.text("ARRAY[]::text[]"),
         ),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default="true"),
         sa.Column(
