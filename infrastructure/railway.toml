@@ -1,0 +1,27 @@
+# Railway project configuration
+# Docs: https://docs.railway.app/reference/config-as-code
+
+[build]
+builder = "DOCKERFILE"
+
+[[services]]
+name = "backend"
+source = "backend"
+dockerfile = "backend/Dockerfile"
+
+[services.deploy]
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "frontend"
+source = "frontend"
+dockerfile = "frontend/Dockerfile"
+
+[services.deploy]
+healthcheckPath = "/"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

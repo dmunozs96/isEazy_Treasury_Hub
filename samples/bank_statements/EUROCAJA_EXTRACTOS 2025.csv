@@ -1,0 +1,16 @@
+﻿Cuentas > Consultar > Movimientos;;;;
+Movimientos;;;;
+;;;;
+Cuenta;ES45 3081 0297 9150 0073 9601 - CUENTA EMPRESAREA;;;
+Fecha desde;29/11/2025;;;
+Fecha hasta;25/02/2026;;;
+Tipo de movimiento;;;;
+;;;;
+;;;;
+Fecha de ejecución;Fecha valor;Descripción;Importe;Saldo
+19/01/2026 13:22;19/01/2026;TRANS INMEDIATA ISEAZY LMS TRASPASO LIQUIDEZ A OKN BKR DE OKN EUR                                   ;-38.000,00 €;1.264,00 €
+29/12/2025 13:24;29/12/2025;TRANSFERENCIA EUROCAJA RURAL, S.C.C. F.OKN.2025.1369                                                ;11.358,86 €;39.264,00 €
+29/12/2025 13:24;29/12/2025;TRANSFERENCIA EUROCAJA RURAL, S.C.C. F.OKN.2025.1245                                                ;25.113,57 €;27.905,14 €
+24/12/2025 13:20;24/12/2025;TRANSFERENCIA EUROCAJA RURAL, S.C.C. F.OKN.2025.1508                                                ;2.395,79 €;2.791,57 €
+23/12/2025 11:19;23/12/2025;TRANS INMEDIATA ISEAZY LMS SL TRASPASO LIQUIDEZ A OKN CX DE OKN E                                   ;-2.000,00 €;395,78 €
+10/12/2025 16:00;10/12/2025;TRANSFERENCIA EUROCAJA RURAL, S.C.C. F.OKN.2025.1352                                                ;2.395,78 €;2.395,78 €

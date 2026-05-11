@@ -1,0 +1,29 @@
+export const TAXONOMY_CODES = [
+  "OCF_INCOME",
+  "OCF_PAYMENTS",
+  "OCF_PAYROLL",
+  "OCF_TAX",
+  "OCF_SOCIAL_SECURITY",
+  "ICF_CAPEX",
+  "ICF_ASSET_SALE",
+  "FCF_DEBT_DRAWDOWN",
+  "FCF_DEBT_REPAYMENT",
+  "FCF_INTEREST",
+  "FCF_BANK_FEES",
+  "FCF_DEPOSIT_ISSUED",
+  "FCF_DEPOSIT_INCOME",
+  "FCF_DEPOSIT_RETURN",
+  "FCF_DIVIDENDS",
+  "FCF_EQUITY",
+  "INT_INTERCOMPANY",
+  "INT_INTERCOMPANY_FOREIGN",
+  "UNCLASSIFIED",
+] as const;
+
+export type TaxonomyCode = (typeof TAXONOMY_CODES)[number];
+
+export const CASH_FLOW_SECTIONS = ["OPERATING", "INVESTING", "FINANCING", "INTERNAL", "UNCLASSIFIED"] as const;
+export type CashFlowSection = (typeof CASH_FLOW_SECTIONS)[number];
+
+export const COMPANY_SHORT_NAMES = ["BPO", "AUTHOR", "SKILLS", "FACTORY", "ENGAGE", "LMS"] as const;
+export type CompanyShortName = (typeof COMPANY_SHORT_NAMES)[number];
