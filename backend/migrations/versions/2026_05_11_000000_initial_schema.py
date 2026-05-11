@@ -76,7 +76,7 @@ def upgrade() -> None:
         sa.Column("row_count", sa.Integer, nullable=True),
         sa.Column("imported_count", sa.Integer, nullable=False, server_default="0"),
         sa.Column("error_count", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("error_log", postgresql.JSONB, nullable=False, server_default="'[]'"),
+        sa.Column("error_log", postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
         sa.Column("imported_by", sa.Text, nullable=False),
         sa.Column("imported_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("NOW()")),
         sa.Column("processed_at", sa.DateTime(timezone=True), nullable=True),
