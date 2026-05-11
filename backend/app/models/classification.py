@@ -41,7 +41,7 @@ class CategoryTaxonomy(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     cash_flow_section: Mapped[CashFlowSection] = mapped_column(
-        Enum(CashFlowSection, name="cash_flow_section"), nullable=False
+        Enum(CashFlowSection, name="cash_flow_section", native_enum=False), nullable=False
     )
     level: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -54,7 +54,7 @@ class ClassificationRule(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    match_type: Mapped[MatchType] = mapped_column(Enum(MatchType, name="match_type"), nullable=False)
+    match_type: Mapped[MatchType] = mapped_column(Enum(MatchType, name="match_type", native_enum=False), nullable=False)
     match_field: Mapped[str] = mapped_column(Text, nullable=False)
     match_pattern: Mapped[str] = mapped_column(Text, nullable=False)
     category_code: Mapped[str] = mapped_column(Text, ForeignKey("category_taxonomy.code"), nullable=False)
@@ -76,7 +76,7 @@ class MovementClassification(Base):
     category_code: Mapped[str] = mapped_column(Text, ForeignKey("category_taxonomy.code"), nullable=False)
     subcategory_code: Mapped[str | None] = mapped_column(Text, ForeignKey("category_taxonomy.code"), nullable=True)
     source: Mapped[ClassificationSource] = mapped_column(
-        Enum(ClassificationSource, name="classification_source"), nullable=False
+        Enum(ClassificationSource, name="classification_source", native_enum=False), nullable=False
     )
     rule_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("classification_rules.id"), nullable=True)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)

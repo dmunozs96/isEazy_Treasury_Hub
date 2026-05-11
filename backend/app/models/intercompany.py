@@ -50,10 +50,10 @@ class IntercompanyMatch(Base):
     match_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     status: Mapped[MatchStatus] = mapped_column(
-        Enum(MatchStatus, name="match_status"), nullable=False, default=MatchStatus.PROPOSED
+        Enum(MatchStatus, name="match_status", native_enum=False), nullable=False, default=MatchStatus.PROPOSED
     )
     match_method: Mapped[MatchMethod] = mapped_column(
-        Enum(MatchMethod, name="match_method"), nullable=False
+        Enum(MatchMethod, name="match_method", native_enum=False), nullable=False
     )
 
     # 0.0–1.0 composite score; NULL for manual matches and IN_TRANSIT

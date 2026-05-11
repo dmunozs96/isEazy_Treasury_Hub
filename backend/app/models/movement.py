@@ -28,7 +28,7 @@ class RawMovement(Base):
     normalized_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     normalized_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     parse_status: Mapped[ParseStatus] = mapped_column(
-        Enum(ParseStatus, name="parse_status"), nullable=False, default=ParseStatus.OK
+        Enum(ParseStatus, name="parse_status", native_enum=False), nullable=False, default=ParseStatus.OK
     )
     parse_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     movement_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)

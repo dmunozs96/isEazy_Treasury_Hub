@@ -28,7 +28,7 @@ class ImportBatch(Base):
     file_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     file_format: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[ImportStatus] = mapped_column(
-        Enum(ImportStatus, name="import_status"), nullable=False, default=ImportStatus.PENDING
+        Enum(ImportStatus, name="import_status", native_enum=False), nullable=False, default=ImportStatus.PENDING
     )
     row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     imported_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
