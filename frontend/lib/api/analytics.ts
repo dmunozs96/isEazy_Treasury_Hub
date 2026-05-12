@@ -1,7 +1,7 @@
 import { api } from "./client";
 import type { CashFlowGranularity, CashFlowStatement, ConsistencyReport, DashboardSummary } from "@/types/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
 export interface CashFlowFilters {
   granularity: CashFlowGranularity;

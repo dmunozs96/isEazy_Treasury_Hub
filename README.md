@@ -25,6 +25,10 @@ See [TODO.md](TODO.md) for full status.
 - Intercompany matching workflow with proposed, in-transit, unresolved, confirmed, and rejected states
 - Dashboard, consistency panel, settings view, and cash flow statement view
 
+## Deployment Note
+
+Railway should show one project canvas with three services together: `frontend`, `backend`, and `Postgres`. This follows the foundation decision: one Railway project, multiple services/environments inside it. The frontend service uses `/frontend/railway.toml` and proxies `/api/v1/...` requests to the backend through the runtime `BACKEND_URL` variable. See [infrastructure/RAILWAY_DEPLOYMENT.md](infrastructure/RAILWAY_DEPLOYMENT.md).
+
 ## Documentation
 
 | Document | Path |

@@ -33,7 +33,7 @@ export interface CategoryOverride {
   override_reason?: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
 export const movementsApi = {
   list: (filters: MovementFilters) =>

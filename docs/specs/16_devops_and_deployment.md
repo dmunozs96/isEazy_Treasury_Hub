@@ -39,7 +39,7 @@ Railway supports deploying multiple services from a monorepo:
 - **Service: frontend** — Next.js on Railway, `Dockerfile` in `/frontend`
 - **Service: postgres** — Railway managed PostgreSQL
 
-Each service has its own Railway environment variables.
+All three services must live in the same Railway project/environment canvas. Each service has its own Railway environment variables, but the deployed system is operated as one project.
 
 ---
 
@@ -96,8 +96,10 @@ LOG_LEVEL=INFO
 ### Frontend Required
 
 ```
-NEXT_PUBLIC_API_URL=https://api.treasury.iseazy.com
+BACKEND_URL=https://<backend-domain>.up.railway.app
 ```
+
+`NEXT_PUBLIC_API_URL` is optional and should normally be left unset on Railway. The frontend proxies same-origin `/api/v1/...` requests to `BACKEND_URL`, which avoids browser bundles being tied to a build-time backend URL.
 
 ### Template Files
 
@@ -199,13 +201,15 @@ Phase 2: consider:
 
 ### First Deployment
 
-1. Create Railway project with three services: backend, frontend, postgres
-2. Set environment variables for each service
-3. Deploy backend first (runs Alembic migrations)
-4. Seed initial data (companies, bank accounts, category taxonomy) via `/scripts/seed.py`
-5. Deploy frontend
-6. Verify health endpoint
-7. Run smoke test checklist
+1. Create one Railway project/environment with three services visible together: frontend, backend, postgres
+2. Set backend root directory `/backend` and config file `/backend/railway.toml`
+3. Set frontend root directory `/frontend` and config file `/frontend/railway.toml`
+4. Set environment variables for each service
+5. Deploy backend first (runs Alembic migrations)
+6. Seed initial data (companies, bank accounts, category taxonomy) via `/scripts/seed.py`
+7. Deploy frontend
+8. Verify health endpoint
+9. Run smoke test checklist
 
 ### Routine Deployment (code changes)
 

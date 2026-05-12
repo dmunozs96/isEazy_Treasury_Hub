@@ -22,11 +22,15 @@ Current milestone: Milestone 1.6c COMPLETE — Next: Railway deploy, then test/p
 - [ ] Test & polish pass after deployment target is selected
 
 ### Railway first deployment (all config is ready — just needs Railway project creation)
-1. Create Railway project → add services: backend, frontend, PostgreSQL
-2. Set env vars from `.env.example` files on each service
-3. Push to GitHub / connect repo — Railway auto-deploys
-4. Run seed once: `cd backend && python ../scripts/seed.py` (against Railway DB via Railway CLI)
-5. Verify `GET /api/v1/health` returns `{"status":"ok"}`
+1. Use one Railway project/environment only → the canvas must contain frontend, backend, and PostgreSQL together
+2. Set backend root directory `/backend` and config file `/backend/railway.toml`
+3. Set frontend root directory `/frontend` and config file `/frontend/railway.toml`
+4. Set env vars from `.env.example` files on each service; frontend should use `BACKEND_URL=https://<backend-domain>`
+5. Push to GitHub / connect repo — Railway auto-deploys
+6. Run seed once: `cd backend && python ../scripts/seed.py` (against Railway DB via Railway CLI)
+7. Verify `GET /api/v1/health` returns `{"status":"ok"}` and frontend Network calls hit `/api/v1/...` on the frontend domain
+
+See `infrastructure/RAILWAY_DEPLOYMENT.md` for the exact service and env setup.
 
 ### Pre-deploy verification status (session 11)
 1. Backend parser integration suite: `77 passed`

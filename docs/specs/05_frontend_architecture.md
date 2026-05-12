@@ -236,5 +236,7 @@ npm run build
 
 Environment variables:
 ```
-NEXT_PUBLIC_API_URL=http://localhost:8000
+BACKEND_URL=http://localhost:8000
+# Optional direct-browser mode:
+# NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
