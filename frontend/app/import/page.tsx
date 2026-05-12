@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
+  Bot,
   CheckCircle2,
   Clock,
   FileSpreadsheet,
@@ -12,18 +13,19 @@ import {
   XCircle,
 } from "lucide-react";
 
-import { analyticsApi } from "@/lib/api/analytics";
+import { bankAccountsApi } from "@/lib/api/bank-accounts";
 import { companiesApi } from "@/lib/api/companies";
 import { importsApi } from "@/lib/api/imports";
 import { formatDate } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
-import type { AccountImportStatus, ImportBatch } from "@/types/api";
+import type { BankAccount, ImportBatch } from "@/types/api";
 
 type QueuedFile = {
   id: string;
   file: File;
   bankAccountId: string;
   status: "READY" | "MISSING_ACCOUNT" | "IMPORTING" | "COMPLETED" | "FAILED";
+  confidence: "AUTO" | "MANUAL" | "NONE";
   message?: string;
 };
 
@@ -67,8 +69,40 @@ function ImportStat({
   );
 }
 
-function accountLabel(account: AccountImportStatus) {
-  return `${account.short_name} - ${account.bank_name} ${account.account_name} (...${account.iban_last4})`;
+const COMPANY_ALIASES: Record<string, string[]> = {
+  AUTHOR: ["author", "iseazy", "is easy", "iseazy sl"],
+  BPO: ["bpo", "bizpills", "bizpills group"],
+  ENGAGE: ["engage"],
+  FACTORY: ["factory"],
+  LMS: ["lms"],
+  SKILLS: ["skills"],
+};
+
+const BANK_ALIASES: Record<string, string[]> = {
+  ABANCA: ["abanca"],
+  "BANCA MARCH": ["banca march", "bancamarch"],
+  BANKINTER: ["bankinter"],
+  BBVA: ["bbva"],
+  CAIXABANK: ["caixa", "caixabank", "la caixa"],
+  CAIXA: ["caixa", "caixabank", "la caixa"],
+  CAJAMAR: ["cajamar"],
+  DEUTSCHE: ["deutsche", "deustche"],
+  "DEUTSCHE BANK": ["deutsche", "deustche", "deutsche bank"],
+  EUROCAJA: ["eurocaja", "eurocaja rural"],
+  IBERCAJA: ["ibercaja"],
+  RURALVIA: ["ruralvia", "rural via"],
+  SABADELL: ["sabadell"],
+  SANTANDER: ["santander"],
+};
+
+function accountLast4(account: BankAccount) {
+  return account.iban?.replace(/\D/g, "").slice(-4) || account.account_name.replace(/\D/g, "").slice(-4);
+}
+
+function accountLabel(account: BankAccount) {
+  const company = account.company_short_name ?? "Group";
+  const last4 = accountLast4(account);
+  return `${company} - ${account.bank_name} ${account.account_name}${last4 ? ` (...${last4})` : ""}`;
 }
 
 function normalizeToken(value: string) {
@@ -80,37 +114,57 @@ function normalizeToken(value: string) {
     .trim();
 }
 
-function guessAccountId(fileName: string, accounts: AccountImportStatus[]) {
+function aliasesForCompany(account: BankAccount) {
+  const shortName = account.company_short_name ?? "";
+  return [shortName, account.company_name ?? "", ...(COMPANY_ALIASES[shortName.toUpperCase()] ?? [])]
+    .map(normalizeToken)
+    .filter(Boolean);
+}
+
+function aliasesForBank(account: BankAccount) {
+  const bank = account.bank_name.toUpperCase();
+  const aliasKey = Object.keys(BANK_ALIASES).find((key) => bank.includes(key));
+  return [account.bank_name, ...(aliasKey ? BANK_ALIASES[aliasKey] : [])]
+    .map(normalizeToken)
+    .filter(Boolean);
+}
+
+function scoreAccountForFile(fileName: string, account: BankAccount) {
   const normalizedFileName = normalizeToken(fileName);
+  const fileDigits = fileName.match(/\d{3,4}/g) ?? ([] as string[]);
+  const last4 = accountLast4(account);
+  const accountDigits = account.account_name.match(/\d{3,4}/g) ?? ([] as string[]);
+  const bankHit = aliasesForBank(account).some((token) => normalizedFileName.includes(token));
+  const companyHit = aliasesForCompany(account).some((token) => normalizedFileName.includes(token));
+  const numberHit = Boolean(
+    (last4 && fileDigits.includes(last4)) ||
+      accountDigits.some((digits) => fileDigits.includes(digits)),
+  );
+
+  let score = 0;
+  if (bankHit) score += 40;
+  if (companyHit) score += 35;
+  if (numberHit) score += 60;
+
+  if (bankHit && numberHit) score += 35;
+  if (companyHit && numberHit) score += 25;
+  if (bankHit && companyHit) score += 20;
+
+  return score;
+}
+
+function guessAccount(fileName: string, accounts: BankAccount[]) {
   const scored = accounts
-    .map((account) => {
-      const tokens = [
-        account.short_name,
-        account.bank_name,
-        account.account_name,
-        account.iban_last4,
-      ]
-        .filter(Boolean)
-        .map(String);
-
-      const score = tokens.reduce((sum, token) => {
-        const normalizedToken = normalizeToken(token);
-        return normalizedToken && normalizedFileName.includes(normalizedToken) ? sum + normalizedToken.length : sum;
-      }, 0);
-
-      return { account, score };
-    })
-    .filter((item) => item.score > 0)
+    .map((account) => ({ account, score: scoreAccountForFile(fileName, account) }))
+    .filter((item) => item.score >= 70)
     .sort((a, b) => b.score - a.score);
 
-  return scored[0]?.account.bank_account_id ?? "";
+  return scored[0]?.account ?? null;
 }
 
 export default function ImportPage() {
   const queryClient = useQueryClient();
-  const now = new Date();
   const [companyId, setCompanyId] = useState("");
-  const [bankAccountId, setBankAccountId] = useState("");
   const [notes, setNotes] = useState("");
   const [queuedFiles, setQueuedFiles] = useState<QueuedFile[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -121,26 +175,23 @@ export default function ImportPage() {
     staleTime: 5 * 60_000,
   });
 
-  const { data: consistency, isLoading: isLoadingAccounts } = useQuery({
-    queryKey: ["consistency", now.getFullYear(), now.getMonth() + 1],
-    queryFn: () => analyticsApi.consistency(now.getFullYear(), now.getMonth() + 1),
+  const { data: accounts = [], isLoading: isLoadingAccounts } = useQuery({
+    queryKey: ["bank-accounts"],
+    queryFn: () => bankAccountsApi.list({ active_only: true }),
     staleTime: 60_000,
   });
 
-  const accounts = useMemo(() => consistency?.section_a ?? [], [consistency]);
   const filteredAccounts = useMemo(() => {
     if (!companyId) return accounts;
-    const company = companies.find((item) => item.id === companyId);
-    return accounts.filter((account) => account.short_name === company?.short_name);
-  }, [accounts, companies, companyId]);
+    return accounts.filter((account) => account.company_id === companyId);
+  }, [accounts, companyId]);
 
   const importFilters = useMemo(
     () => ({
       company_id: companyId || undefined,
-      bank_account_id: bankAccountId || undefined,
       limit: 50,
     }),
-    [companyId, bankAccountId],
+    [companyId],
   );
 
   const {
@@ -224,18 +275,21 @@ export default function ImportPage() {
   const importedRows = batches.reduce((sum, batch) => sum + batch.imported_count, 0);
   const readyFiles = queuedFiles.filter((item) => item.status === "READY");
   const missingAccountCount = queuedFiles.filter((item) => item.status === "MISSING_ACCOUNT").length;
+  const autoAssignedCount = queuedFiles.filter((item) => item.confidence === "AUTO").length;
 
   function handleFilesSelected(fileList: FileList | null) {
     const files = Array.from(fileList ?? []);
     if (files.length === 0) return;
 
     const nextFiles = files.map((selectedFile) => {
-      const guessedAccountId = bankAccountId || guessAccountId(selectedFile.name, accounts);
+      const guessedAccount = guessAccount(selectedFile.name, accounts);
       return {
         id: `${selectedFile.name}-${selectedFile.size}-${selectedFile.lastModified}`,
         file: selectedFile,
-        bankAccountId: guessedAccountId,
-        status: guessedAccountId ? "READY" : "MISSING_ACCOUNT",
+        bankAccountId: guessedAccount?.id ?? "",
+        status: guessedAccount ? "READY" : "MISSING_ACCOUNT",
+        confidence: guessedAccount ? "AUTO" : "NONE",
+        message: guessedAccount ? `Matched ${accountLabel(guessedAccount)}` : undefined,
       } satisfies QueuedFile;
     });
 
@@ -256,26 +310,10 @@ export default function ImportPage() {
               ...item,
               bankAccountId: nextAccountId,
               status: nextAccountId ? "READY" : "MISSING_ACCOUNT",
+              confidence: nextAccountId ? "MANUAL" : "NONE",
               message: undefined,
             }
           : item,
-      ),
-    );
-  }
-
-  function applyDefaultAccount(nextAccountId: string) {
-    setBankAccountId(nextAccountId);
-    if (!nextAccountId) return;
-    setQueuedFiles((current) =>
-      current.map((item) =>
-        item.bankAccountId
-          ? item
-          : {
-              ...item,
-              bankAccountId: nextAccountId,
-              status: "READY",
-              message: undefined,
-            },
       ),
     );
   }
@@ -331,7 +369,6 @@ export default function ImportPage() {
                 value={companyId}
                 onChange={(event) => {
                   setCompanyId(event.target.value);
-                  setBankAccountId("");
                 }}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
@@ -343,19 +380,24 @@ export default function ImportPage() {
                 ))}
               </select>
 
-              <select
-                value={bankAccountId}
-                onChange={(event) => applyDefaultAccount(event.target.value)}
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                disabled={isLoadingAccounts}
-              >
-                <option value="">{isLoadingAccounts ? "Loading accounts..." : "Default account for unmatched files"}</option>
-                {filteredAccounts.map((account) => (
-                  <option key={account.bank_account_id} value={account.bank_account_id}>
-                    {accountLabel(account)}
-                  </option>
-                ))}
-              </select>
+              {queuedFiles.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 rounded-lg border bg-muted/30 p-3 text-center text-xs">
+                  <div>
+                    <div className="font-semibold text-emerald-700">{autoAssignedCount}</div>
+                    <div className="text-muted-foreground">Auto matched</div>
+                  </div>
+                  <div>
+                    <div className={cn("font-semibold", missingAccountCount ? "text-amber-700" : "text-emerald-700")}>
+                      {missingAccountCount}
+                    </div>
+                    <div className="text-muted-foreground">Need review</div>
+                  </div>
+                  <div>
+                    <div className="font-semibold text-foreground">{readyFiles.length}</div>
+                    <div className="text-muted-foreground">Ready</div>
+                  </div>
+                </div>
+              )}
 
               <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed bg-muted/30 px-4 py-6 text-center transition-colors hover:bg-muted/50">
                 <FileSpreadsheet className="mb-3 h-8 w-8 text-muted-foreground" />
@@ -410,7 +452,7 @@ export default function ImportPage() {
                             >
                               <option value="">Assign account</option>
                               {accounts.map((account) => (
-                                <option key={account.bank_account_id} value={account.bank_account_id}>
+                                <option key={account.id} value={account.id}>
                                   {accountLabel(account)}
                                 </option>
                               ))}
@@ -429,6 +471,12 @@ export default function ImportPage() {
                             >
                               {item.status.replace("_", " ")}
                             </span>
+                            {item.confidence === "AUTO" && item.status === "READY" && (
+                              <div className="mt-1 flex items-center gap-1 text-emerald-700">
+                                <Bot className="h-3 w-3" />
+                                Auto assigned
+                              </div>
+                            )}
                             {item.message && (
                               <div className="mt-1 max-w-40 truncate text-muted-foreground" title={item.message}>
                                 {item.message}

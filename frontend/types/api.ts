@@ -14,6 +14,8 @@ export interface Company {
 export interface BankAccount {
   id: string;
   company_id: string;
+  company_name?: string | null;
+  company_short_name?: string | null;
   bank_name: string;
   account_name: string;
   iban: string;

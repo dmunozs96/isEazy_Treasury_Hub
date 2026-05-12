@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import health, companies, imports, movements, classifications, intercompany, analytics
+from app.routers import analytics, bank_accounts, classifications, companies, health, imports, intercompany, movements
 
 app = FastAPI(
     title="isEazy Treasury Hub API",
@@ -21,6 +21,7 @@ app.add_middleware(
 
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(companies.router, prefix="/api/v1")
+app.include_router(bank_accounts.router, prefix="/api/v1")
 app.include_router(imports.router, prefix="/api/v1")
 app.include_router(movements.router, prefix="/api/v1")
 app.include_router(classifications.router, prefix="/api/v1")
