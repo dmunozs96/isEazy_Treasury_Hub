@@ -22,19 +22,22 @@ function toQueryString(filters: ImportFilters = {}): string {
 
 export interface CreateImportInput {
   file: File;
-  bankAccountId: string;
+  bankAccountId?: string;
   notes?: string;
 }
 
 async function createImport(input: CreateImportInput): Promise<ImportBatch> {
   const form = new FormData();
   form.set("file", input.file);
-  form.set("bank_account_id", input.bankAccountId);
+  if (input.bankAccountId) {
+    form.set("bank_account_id", input.bankAccountId);
+  }
   if (input.notes?.trim()) {
     form.set("notes", input.notes.trim());
   }
 
-  const res = await fetch(`${API_BASE}/api/v1/imports/`, {
+  const path = input.bankAccountId ? "/api/v1/imports/" : "/api/v1/imports/auto";
+  const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     body: form,
     redirect: "follow",

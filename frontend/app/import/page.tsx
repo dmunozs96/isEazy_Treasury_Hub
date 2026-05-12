@@ -25,7 +25,7 @@ type QueuedFile = {
   file: File;
   bankAccountId: string;
   status: "READY" | "MISSING_ACCOUNT" | "IMPORTING" | "COMPLETED" | "FAILED";
-  confidence: "AUTO" | "MANUAL" | "NONE";
+  confidence: "AUTO" | "SERVER_AUTO" | "MANUAL" | "NONE";
   message?: string;
 };
 
@@ -219,7 +219,7 @@ export default function ImportPage() {
         try {
           const batch = await importsApi.create({
             file: item.file,
-            bankAccountId: item.bankAccountId,
+            bankAccountId: item.bankAccountId || undefined,
             notes,
           });
           results.push(batch);
@@ -273,9 +273,9 @@ export default function ImportPage() {
   const failed = batches.filter((batch) => batch.status === "FAILED").length;
   const duplicate = batches.filter((batch) => batch.status === "DUPLICATE").length;
   const importedRows = batches.reduce((sum, batch) => sum + batch.imported_count, 0);
-  const readyFiles = queuedFiles.filter((item) => item.status === "READY");
+  const readyFiles = queuedFiles.filter((item) => item.status === "READY" || item.status === "MISSING_ACCOUNT");
   const missingAccountCount = queuedFiles.filter((item) => item.status === "MISSING_ACCOUNT").length;
-  const autoAssignedCount = queuedFiles.filter((item) => item.confidence === "AUTO").length;
+  const autoAssignedCount = queuedFiles.filter((item) => item.confidence === "AUTO" || item.confidence === "SERVER_AUTO").length;
 
   function handleFilesSelected(fileList: FileList | null) {
     const files = Array.from(fileList ?? []);
@@ -288,17 +288,15 @@ export default function ImportPage() {
         file: selectedFile,
         bankAccountId: guessedAccount?.id ?? "",
         status: guessedAccount ? "READY" : "MISSING_ACCOUNT",
-        confidence: guessedAccount ? "AUTO" : "NONE",
-        message: guessedAccount ? `Matched ${accountLabel(guessedAccount)}` : undefined,
+        confidence: guessedAccount ? "AUTO" : "SERVER_AUTO",
+        message: guessedAccount ? `Matched ${accountLabel(guessedAccount)}` : "Will auto-detect during import",
       } satisfies QueuedFile;
     });
 
     setQueuedFiles(nextFiles);
-    const missing = nextFiles.filter((item) => !item.bankAccountId).length;
+    const matched = nextFiles.filter((item) => item.bankAccountId).length;
     setMessage(
-      missing
-        ? `${nextFiles.length} files queued. Assign an account to ${missing} file${missing !== 1 ? "s" : ""}.`
-        : `${nextFiles.length} files queued and ready to import.`,
+      `${nextFiles.length} files queued. ${matched} matched in the browser; the rest will be auto-detected by the import service.`,
     );
   }
 
@@ -323,11 +321,7 @@ export default function ImportPage() {
       setMessage("Select one or more statement files first.");
       return;
     }
-    if (missingAccountCount > 0) {
-      setMessage(`Assign a bank account to all files before importing. ${missingAccountCount} pending.`);
-      return;
-    }
-    const filesToImport = queuedFiles.filter((item) => item.status === "READY");
+    const filesToImport = queuedFiles.filter((item) => item.status === "READY" || item.status === "MISSING_ACCOUNT");
     if (filesToImport.length === 0) {
       setMessage("There are no ready files to import.");
       return;
@@ -387,10 +381,10 @@ export default function ImportPage() {
                     <div className="text-muted-foreground">Auto matched</div>
                   </div>
                   <div>
-                    <div className={cn("font-semibold", missingAccountCount ? "text-amber-700" : "text-emerald-700")}>
+                    <div className={cn("font-semibold", missingAccountCount ? "text-blue-700" : "text-emerald-700")}>
                       {missingAccountCount}
                     </div>
-                    <div className="text-muted-foreground">Need review</div>
+                    <div className="text-muted-foreground">Server detect</div>
                   </div>
                   <div>
                     <div className="font-semibold text-foreground">{readyFiles.length}</div>
@@ -465,16 +459,16 @@ export default function ImportPage() {
                                 item.status === "COMPLETED" && "border-emerald-200 bg-emerald-100 text-emerald-800",
                                 item.status === "FAILED" && "border-red-200 bg-red-100 text-red-700",
                                 item.status === "IMPORTING" && "border-blue-200 bg-blue-100 text-blue-800",
-                                item.status === "MISSING_ACCOUNT" && "border-amber-200 bg-amber-100 text-amber-800",
+                                item.status === "MISSING_ACCOUNT" && "border-blue-200 bg-blue-100 text-blue-800",
                                 item.status === "READY" && "border-slate-200 bg-slate-100 text-slate-700",
                               )}
                             >
-                              {item.status.replace("_", " ")}
+                              {item.status === "MISSING_ACCOUNT" ? "AUTO DETECT" : item.status.replace("_", " ")}
                             </span>
-                            {item.confidence === "AUTO" && item.status === "READY" && (
+                            {(item.confidence === "AUTO" || item.confidence === "SERVER_AUTO") && (
                               <div className="mt-1 flex items-center gap-1 text-emerald-700">
                                 <Bot className="h-3 w-3" />
-                                Auto assigned
+                                {item.confidence === "AUTO" ? "Auto assigned" : "Auto detect"}
                               </div>
                             )}
                             {item.message && (
