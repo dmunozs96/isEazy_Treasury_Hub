@@ -45,5 +45,5 @@ BACKEND_URL=https://<backend-domain>.up.railway.app
 ## Smoke checks
 
 1. Open the backend public URL at `/api/v1/health`.
-2. Open the frontend public URL.
+2. Open the frontend public URL at `/dashboard`.
 3. In the browser devtools Network tab, dashboard API calls should go to the frontend domain under `/api/v1/...`, not `localhost:8000`.
