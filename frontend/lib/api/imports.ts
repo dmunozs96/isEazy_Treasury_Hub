@@ -37,6 +37,7 @@ async function createImport(input: CreateImportInput): Promise<ImportBatch> {
   const res = await fetch(`${API_BASE}/api/v1/imports/`, {
     method: "POST",
     body: form,
+    redirect: "follow",
   });
 
   if (!res.ok) {
@@ -49,6 +50,6 @@ async function createImport(input: CreateImportInput): Promise<ImportBatch> {
 
 export const importsApi = {
   list: (filters?: ImportFilters) =>
-    api.get<ImportBatch[]>(`/api/v1/imports/${toQueryString(filters)}`),
+    api.get<ImportBatch[]>(`/api/v1/imports${toQueryString(filters)}`),
   create: createImport,
 };

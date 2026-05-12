@@ -19,6 +19,14 @@ import { formatDate } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import type { AccountImportStatus, ImportBatch } from "@/types/api";
 
+type QueuedFile = {
+  id: string;
+  file: File;
+  bankAccountId: string;
+  status: "READY" | "MISSING_ACCOUNT" | "IMPORTING" | "COMPLETED" | "FAILED";
+  message?: string;
+};
+
 const STATUS_STYLE: Record<ImportBatch["status"], string> = {
   PENDING: "bg-slate-100 text-slate-700 border-slate-200",
   PROCESSING: "bg-blue-100 text-blue-800 border-blue-200",
@@ -63,13 +71,48 @@ function accountLabel(account: AccountImportStatus) {
   return `${account.short_name} - ${account.bank_name} ${account.account_name} (...${account.iban_last4})`;
 }
 
+function normalizeToken(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function guessAccountId(fileName: string, accounts: AccountImportStatus[]) {
+  const normalizedFileName = normalizeToken(fileName);
+  const scored = accounts
+    .map((account) => {
+      const tokens = [
+        account.short_name,
+        account.bank_name,
+        account.account_name,
+        account.iban_last4,
+      ]
+        .filter(Boolean)
+        .map(String);
+
+      const score = tokens.reduce((sum, token) => {
+        const normalizedToken = normalizeToken(token);
+        return normalizedToken && normalizedFileName.includes(normalizedToken) ? sum + normalizedToken.length : sum;
+      }, 0);
+
+      return { account, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.account.bank_account_id ?? "";
+}
+
 export default function ImportPage() {
   const queryClient = useQueryClient();
   const now = new Date();
   const [companyId, setCompanyId] = useState("");
   const [bankAccountId, setBankAccountId] = useState("");
   const [notes, setNotes] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [queuedFiles, setQueuedFiles] = useState<QueuedFile[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
   const { data: companies = [] } = useQuery({
@@ -112,10 +155,57 @@ export default function ImportPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: importsApi.create,
-    onSuccess: (batch) => {
-      setMessage(`${batch.filename} imported: ${batch.imported_count} movements, ${batch.error_count} errors.`);
-      setFile(null);
+    mutationFn: async (files: QueuedFile[]) => {
+      const results: ImportBatch[] = [];
+      let failures = 0;
+      for (const item of files) {
+        setQueuedFiles((current) =>
+          current.map((queued) =>
+            queued.id === item.id ? { ...queued, status: "IMPORTING", message: "Importing..." } : queued,
+          ),
+        );
+
+        try {
+          const batch = await importsApi.create({
+            file: item.file,
+            bankAccountId: item.bankAccountId,
+            notes,
+          });
+          results.push(batch);
+          setQueuedFiles((current) =>
+            current.map((queued) =>
+              queued.id === item.id
+                ? {
+                    ...queued,
+                    status: batch.status === "FAILED" ? "FAILED" : "COMPLETED",
+                    message: `${batch.imported_count} rows, ${batch.error_count} errors`,
+                  }
+                : queued,
+            ),
+          );
+        } catch (error) {
+          failures += 1;
+          setQueuedFiles((current) =>
+            current.map((queued) =>
+              queued.id === item.id
+                ? {
+                    ...queued,
+                    status: "FAILED",
+                    message: error instanceof Error ? error.message : "Import failed",
+                  }
+                : queued,
+            ),
+          );
+        }
+      }
+      return { results, failures };
+    },
+    onSuccess: ({ results, failures }) => {
+      const importedCount = results.reduce((sum, batch) => sum + batch.imported_count, 0);
+      const errorCount = results.reduce((sum, batch) => sum + batch.error_count, 0);
+      setMessage(
+        `${results.length + failures} files processed: ${importedCount} movements, ${errorCount} row errors, ${failures} failed uploads.`,
+      );
       setNotes("");
       queryClient.invalidateQueries({ queryKey: ["imports"] });
       queryClient.invalidateQueries({ queryKey: ["movements"] });
@@ -132,13 +222,79 @@ export default function ImportPage() {
   const failed = batches.filter((batch) => batch.status === "FAILED").length;
   const duplicate = batches.filter((batch) => batch.status === "DUPLICATE").length;
   const importedRows = batches.reduce((sum, batch) => sum + batch.imported_count, 0);
+  const readyFiles = queuedFiles.filter((item) => item.status === "READY");
+  const missingAccountCount = queuedFiles.filter((item) => item.status === "MISSING_ACCOUNT").length;
+
+  function handleFilesSelected(fileList: FileList | null) {
+    const files = Array.from(fileList ?? []);
+    if (files.length === 0) return;
+
+    const nextFiles = files.map((selectedFile) => {
+      const guessedAccountId = bankAccountId || guessAccountId(selectedFile.name, accounts);
+      return {
+        id: `${selectedFile.name}-${selectedFile.size}-${selectedFile.lastModified}`,
+        file: selectedFile,
+        bankAccountId: guessedAccountId,
+        status: guessedAccountId ? "READY" : "MISSING_ACCOUNT",
+      } satisfies QueuedFile;
+    });
+
+    setQueuedFiles(nextFiles);
+    const missing = nextFiles.filter((item) => !item.bankAccountId).length;
+    setMessage(
+      missing
+        ? `${nextFiles.length} files queued. Assign an account to ${missing} file${missing !== 1 ? "s" : ""}.`
+        : `${nextFiles.length} files queued and ready to import.`,
+    );
+  }
+
+  function updateQueuedAccount(id: string, nextAccountId: string) {
+    setQueuedFiles((current) =>
+      current.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              bankAccountId: nextAccountId,
+              status: nextAccountId ? "READY" : "MISSING_ACCOUNT",
+              message: undefined,
+            }
+          : item,
+      ),
+    );
+  }
+
+  function applyDefaultAccount(nextAccountId: string) {
+    setBankAccountId(nextAccountId);
+    if (!nextAccountId) return;
+    setQueuedFiles((current) =>
+      current.map((item) =>
+        item.bankAccountId
+          ? item
+          : {
+              ...item,
+              bankAccountId: nextAccountId,
+              status: "READY",
+              message: undefined,
+            },
+      ),
+    );
+  }
 
   function handleSubmit() {
-    if (!file || !bankAccountId) {
-      setMessage("Select a bank account and a statement file first.");
+    if (queuedFiles.length === 0) {
+      setMessage("Select one or more statement files first.");
       return;
     }
-    createMutation.mutate({ file, bankAccountId, notes });
+    if (missingAccountCount > 0) {
+      setMessage(`Assign a bank account to all files before importing. ${missingAccountCount} pending.`);
+      return;
+    }
+    const filesToImport = queuedFiles.filter((item) => item.status === "READY");
+    if (filesToImport.length === 0) {
+      setMessage("There are no ready files to import.");
+      return;
+    }
+    createMutation.mutate(filesToImport);
   }
 
   return (
@@ -189,11 +345,11 @@ export default function ImportPage() {
 
               <select
                 value={bankAccountId}
-                onChange={(event) => setBankAccountId(event.target.value)}
+                onChange={(event) => applyDefaultAccount(event.target.value)}
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 disabled={isLoadingAccounts}
               >
-                <option value="">{isLoadingAccounts ? "Loading accounts..." : "Select bank account"}</option>
+                <option value="">{isLoadingAccounts ? "Loading accounts..." : "Default account for unmatched files"}</option>
                 {filteredAccounts.map((account) => (
                   <option key={account.bank_account_id} value={account.bank_account_id}>
                     {accountLabel(account)}
@@ -204,16 +360,87 @@ export default function ImportPage() {
               <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed bg-muted/30 px-4 py-6 text-center transition-colors hover:bg-muted/50">
                 <FileSpreadsheet className="mb-3 h-8 w-8 text-muted-foreground" />
                 <span className="text-sm font-medium text-foreground">
-                  {file ? file.name : "Choose statement file"}
+                  {queuedFiles.length > 0 ? `${queuedFiles.length} files selected` : "Choose statement files"}
                 </span>
-                <span className="mt-1 text-xs text-muted-foreground">XLS, XLSX, CSV up to 50 MB</span>
+                <span className="mt-1 text-xs text-muted-foreground">
+                  Select all XLS, XLSX or CSV files together
+                </span>
                 <input
                   type="file"
                   accept=".xls,.xlsx,.csv"
+                  multiple
                   className="sr-only"
-                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                  onChange={(event) => handleFilesSelected(event.target.files)}
                 />
               </label>
+
+              {queuedFiles.length > 0 && (
+                <div className="max-h-72 overflow-auto rounded-lg border">
+                  <table className="w-full border-collapse text-xs">
+                    <thead className="sticky top-0 bg-muted/90">
+                      <tr>
+                        <th className="px-2 py-2 text-left font-semibold uppercase text-muted-foreground">
+                          File
+                        </th>
+                        <th className="px-2 py-2 text-left font-semibold uppercase text-muted-foreground">
+                          Account
+                        </th>
+                        <th className="px-2 py-2 text-left font-semibold uppercase text-muted-foreground">
+                          State
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {queuedFiles.map((item) => (
+                        <tr key={item.id} className="border-t">
+                          <td className="max-w-48 px-2 py-2">
+                            <div className="truncate font-medium" title={item.file.name}>
+                              {item.file.name}
+                            </div>
+                            <div className="text-muted-foreground">
+                              {(item.file.size / 1024 / 1024).toFixed(1)} MB
+                            </div>
+                          </td>
+                          <td className="px-2 py-2">
+                            <select
+                              value={item.bankAccountId}
+                              onChange={(event) => updateQueuedAccount(item.id, event.target.value)}
+                              disabled={createMutation.isPending}
+                              className="w-56 rounded border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                            >
+                              <option value="">Assign account</option>
+                              {accounts.map((account) => (
+                                <option key={account.bank_account_id} value={account.bank_account_id}>
+                                  {accountLabel(account)}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-2 py-2">
+                            <span
+                              className={cn(
+                                "rounded-full border px-2 py-0.5 font-medium",
+                                item.status === "COMPLETED" && "border-emerald-200 bg-emerald-100 text-emerald-800",
+                                item.status === "FAILED" && "border-red-200 bg-red-100 text-red-700",
+                                item.status === "IMPORTING" && "border-blue-200 bg-blue-100 text-blue-800",
+                                item.status === "MISSING_ACCOUNT" && "border-amber-200 bg-amber-100 text-amber-800",
+                                item.status === "READY" && "border-slate-200 bg-slate-100 text-slate-700",
+                              )}
+                            >
+                              {item.status.replace("_", " ")}
+                            </span>
+                            {item.message && (
+                              <div className="mt-1 max-w-40 truncate text-muted-foreground" title={item.message}>
+                                {item.message}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               <textarea
                 value={notes}
@@ -228,7 +455,11 @@ export default function ImportPage() {
                 className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
               >
                 <UploadCloud className="h-4 w-4" />
-                {createMutation.isPending ? "Importing..." : "Import file"}
+                {createMutation.isPending
+                  ? "Importing batch..."
+                  : queuedFiles.length > 0
+                    ? `Import ${readyFiles.length || queuedFiles.length} file${(readyFiles.length || queuedFiles.length) === 1 ? "" : "s"}`
+                    : "Import files"}
               </button>
 
               {message && (

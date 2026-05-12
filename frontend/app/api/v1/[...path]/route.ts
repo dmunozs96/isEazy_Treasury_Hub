@@ -26,7 +26,7 @@ async function proxy(request: Request, { params }: RouteContext) {
   const init: RequestInit = {
     method: request.method,
     headers,
-    redirect: "manual",
+    redirect: "follow",
     cache: "no-store",
   };
 
